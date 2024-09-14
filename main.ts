@@ -39,7 +39,7 @@ Deno.serve({}, (req) => {
         command.aliases.forEach((alias) => {
           if (message.startsWith(`/${alias} `) || message === `/${alias}`) {
             found = true;
-            command.handler(socket, message, meower);
+            command.handler({ socket, cmd: message, meower });
           }
         });
       });
@@ -59,19 +59,19 @@ Deno.serve({}, (req) => {
 const COMMANDS: Command[] = [
   {
     aliases: ["help", "?"],
-    handler: (ws) => {
+    handler: ({ socket }) => {
       const stringifiedCommands = COMMANDS.map(
         (command) =>
           `* /${command.aliases[0]} (Aliases: ${
             command.aliases.slice(1).join(", ") || "<None>"
           })`
       ).join("\n");
-      ws.send("Commands available:\n" + stringifiedCommands);
+      socket.send("Commands available:\n" + stringifiedCommands);
     },
   },
   {
     aliases: ["login"],
-    handler: async (ws, cmd) => {
+    handler: async ({ socket, cmd }) => {
       const [username, ...passwordChunks] = cmd.split(" ").slice(1);
       const password = passwordChunks.join(" ");
       const response = AUTH_RESPONSE_SCHEMA.parse(
@@ -85,18 +85,24 @@ const COMMANDS: Command[] = [
       );
       if (response.error) {
         if (response.type === "Unauthorized") {
-          ws.send(`Account "${username}" not found or password incorrect.`);
+          socket.send(`Account "${username}" not found or password incorrect.`);
         } else {
-          ws.send(`An unknown error occured: ${response.type}`);
+          socket.send(`An unknown error occured: ${response.type}`);
         }
         return;
       }
-      ws.send(response.token);
+      socket.send(response.token);
     },
   },
 ];
 
 type Command = {
   aliases: string[];
-  handler: (socket: WebSocket, cmd: string, meower: WebSocket) => void;
+  handler: (handlerOptions: HandlerOptions) => void;
+};
+
+type HandlerOptions = {
+  socket: WebSocket;
+  meower: WebSocket;
+  cmd: string;
 };
