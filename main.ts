@@ -161,7 +161,12 @@ const COMMANDS: Command[] = [
         return;
       }
       const getChatNickname = (chat: z.infer<typeof CHAT_SCHEMA>) =>
-        chat.nickname ?? "@" + chat.members.find((user) => user !== username);
+        chat.nickname
+          ?.toLowerCase()
+          ?.replace(/[^a-z0-9]/g, "-")
+          ?.replace(/-+/g, "-")
+          ?.replace(/^-|-$/g, "") ??
+        "@" + (chat.members.find((user) => user !== username) ?? "unknown");
       const newChannels = chatsResponse.autoget
         .toSorted((a, b) => b.last_active - a.last_active)
         .reduce((currentChannels, chat) => {
@@ -169,7 +174,7 @@ const COMMANDS: Command[] = [
           let chosenNickname = nickname;
           let i = 1;
           while (chosenNickname in currentChannels) {
-            chosenNickname = `${nickname} ${i}`;
+            chosenNickname = `${nickname}-${i}`;
             i++;
           }
           return { ...currentChannels, [chosenNickname]: chat._id };
