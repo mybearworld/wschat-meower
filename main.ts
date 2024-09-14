@@ -165,8 +165,11 @@ const COMMANDS: Command[] = [
           ?.toLowerCase()
           ?.replace(/[^a-z0-9]/g, "-")
           ?.replace(/-+/g, "-")
+          ?.slice(0, 8)
           ?.replace(/^-|-$/g, "") ??
-        "@" + (chat.members.find((user) => user !== username) ?? "unknown");
+        "@" +
+          (chat.members.find((user) => user !== username)?.slice(0, 7) ??
+            "unknown");
       const newChannels = chatsResponse.autoget
         .toSorted((a, b) => b.last_active - a.last_active)
         .reduce((currentChannels, chat) => {
