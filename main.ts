@@ -112,6 +112,17 @@ const COMMANDS: Command[] = [
     },
   },
   {
+    aliases: ["channels"],
+    handler: ({ socket, channels }) => {
+      socket.send(
+        "Channels:\n" +
+          Object.keys(channels)
+            .map((channel) => " * #" + channel)
+            .join("\n")
+      );
+    },
+  },
+  {
     aliases: ["help", "?"],
     handler: ({ socket }) => {
       const stringifiedCommands = COMMANDS.map(
