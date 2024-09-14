@@ -105,6 +105,13 @@ Deno.serve({}, (req) => {
 
 const COMMANDS: Command[] = [
   {
+    aliases: ["join"],
+    handler: ({ socket, cmd, setChannel, channels }) => {
+      setChannel(channels[cmd.match(/^\/join #(.*)$/)?.[1] ?? "home"]);
+      socket.send("This message needs to be sent so wschat can clear the chat");
+    },
+  },
+  {
     aliases: ["help", "?"],
     handler: ({ socket }) => {
       const stringifiedCommands = COMMANDS.map(
@@ -184,13 +191,6 @@ const COMMANDS: Command[] = [
         }, {});
       setChannels({ ...channels, ...newChannels });
       socket.send(`:json.channels>${JSON.stringify(Object.keys(newChannels))}`);
-    },
-  },
-  {
-    aliases: ["join"],
-    handler: ({ socket, cmd, setChannel, channels }) => {
-      setChannel(channels[cmd.match(/^\/join #(.*)$/)?.[1] ?? "home"]);
-      socket.send("This message needs to be sent so wschat can clear the chat");
     },
   },
 ];
