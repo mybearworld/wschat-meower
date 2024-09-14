@@ -9,6 +9,9 @@ import {
   CHAT_RESPONSE_SCHEMA,
 } from "./schemas.ts";
 
+/** you might be wondering what motd means. to that i say: good question */
+const MOTD = "Welcome to Meower server\nRun /help to see a list of commands";
+
 Deno.serve({}, (req) => {
   if (req.headers.get("upgrade") != "websocket") {
     return new Response(null, {
@@ -19,8 +22,7 @@ Deno.serve({}, (req) => {
 
   const { socket, response } = Deno.upgradeWebSocket(req);
   socket.addEventListener("open", () => {
-    socket.send("Welcome to Meower server");
-    socket.send("Run /help to see a list of commands");
+    socket.send(MOTD);
     socket.send(`:json.channels>["home","livechat"]`);
   });
 
@@ -272,6 +274,12 @@ const COMMANDS: Command[] = [
         }, {});
       setChannels({ ...channels, ...newChannels });
       socket.send(`:json.channels>${JSON.stringify(Object.keys(newChannels))}`);
+    },
+  },
+  {
+    aliases: ["motd"],
+    handler: ({ socket }) => {
+      socket.send(`MOTD: ${MOTD}`);
     },
   },
 ];
