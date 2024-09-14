@@ -175,7 +175,7 @@ const COMMANDS: Command[] = [
         .reduce((currentChannels, chat) => {
           const nickname = getChatNickname(chat);
           let chosenNickname = nickname;
-          let i = 1;
+          let i = 2;
           while (chosenNickname in currentChannels) {
             chosenNickname = `${nickname}-${i}`;
             i++;
