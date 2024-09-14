@@ -65,10 +65,10 @@ const COMMANDS: {
     handler: (ws) => {
       const stringifiedCommands = COMMANDS.map(
         (command) =>
-          `/${command.aliases[0]} (Aliases: ${
+          `* /${command.aliases[0]} (Aliases: ${
             command.aliases.slice(1).join(", ") || "<None>"
           })`
-      );
+      ).join("\n");
       ws.send("Commands available:\n" + stringifiedCommands);
     },
   },
