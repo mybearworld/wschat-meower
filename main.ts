@@ -5,6 +5,8 @@ import {
   CHATS_RESPONSE_SCHEMA,
   CHAT_SCHEMA,
   USER_RESPONSE_SCHEMA,
+  ULIST_SCHEMA,
+  CHAT_RESPONSE_SCHEMA,
 } from "./schemas.ts";
 
 Deno.serve({}, (req) => {
@@ -159,6 +161,35 @@ const COMMANDS: Command[] = [
         return;
       }
       socket.send(`${response._id}\nClient: <Unknown>\nID: ${response.uuid}`);
+    },
+  },
+  {
+    aliases: ["users"],
+    handler: async ({ socket, channel, token }) => {
+      const response = ULIST_SCHEMA.parse(
+        await (await fetch("https://api.meower.org/ulist")).json()
+      );
+      const chat =
+        channel === "home" || channel === "livechat" || !token
+          ? null
+          : CHAT_RESPONSE_SCHEMA.parse(
+              await (
+                await fetch(`https://api.meower.org/chats/${channel}`, {
+                  headers: { Token: token },
+                })
+              ).json()
+            );
+      if (chat?.error) {
+        socket.send(`Unknown error: ${chat.type}`);
+        return;
+      }
+      socket.send(
+        `Users in ${chat ? chat.nickname : channel}:\n` +
+          response.autoget
+            .filter((user) => (chat ? chat.members.includes(user._id) : true))
+            .map((user) => ` * ${user._id}`)
+            .join("\n")
+      );
     },
   },
   {

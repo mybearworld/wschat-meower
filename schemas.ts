@@ -30,6 +30,17 @@ export const CHAT_SCHEMA = z.object({
   last_active: z.number(),
 });
 
+export const CHAT_RESPONSE_SCHEMA = CHAT_SCHEMA.and(
+  z.object({
+    error: z.literal(false),
+  })
+).or(
+  z.object({
+    type: z.string(),
+    error: z.literal(true),
+  })
+);
+
 export const CHATS_RESPONSE_SCHEMA = z
   .object({
     autoget: CHAT_SCHEMA.array(),
@@ -42,15 +53,22 @@ export const CHATS_RESPONSE_SCHEMA = z
     })
   );
 
-export const USER_RESPONSE_SCHEMA = z
-  .object({
-    _id: z.string(),
-    uuid: z.string(),
+export const USER_SCHEMA = z.object({
+  _id: z.string(),
+  uuid: z.string(),
+});
+
+export const USER_RESPONSE_SCHEMA = USER_SCHEMA.and(
+  z.object({
     error: z.literal(false),
   })
-  .or(
-    z.object({
-      type: z.string(),
-      error: z.literal(true),
-    })
-  );
+).or(
+  z.object({
+    type: z.string(),
+    error: z.literal(true),
+  })
+);
+
+export const ULIST_SCHEMA = z.object({
+  autoget: USER_SCHEMA.array(),
+});
