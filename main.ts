@@ -56,10 +56,7 @@ Deno.serve({}, (req) => {
   return response;
 });
 
-const COMMANDS: {
-  aliases: string[];
-  handler: (socket: WebSocket, cmd: string, meower: WebSocket) => void;
-}[] = [
+const COMMANDS: Command[] = [
   {
     aliases: ["help", "?"],
     handler: (ws) => {
@@ -98,3 +95,8 @@ const COMMANDS: {
     },
   },
 ];
+
+type Command = {
+  aliases: string[];
+  handler: (socket: WebSocket, cmd: string, meower: WebSocket) => void;
+};
