@@ -14,6 +14,8 @@ Deno.serve({}, (req) => {
     socket.send("Run /help to see a list of commands");
   });
 
+  let token: string | undefined = undefined;
+
   const meower = new WebSocket("https://server.meower.org?v=1");
   meower.addEventListener("message", (ev) => {
     const data = ev.data;
@@ -39,7 +41,15 @@ Deno.serve({}, (req) => {
         command.aliases.forEach((alias) => {
           if (message.startsWith(`/${alias} `) || message === `/${alias}`) {
             found = true;
-            command.handler({ socket, cmd: message, meower });
+            command.handler({
+              socket,
+              cmd: message,
+              meower,
+              token,
+              setToken: (newToken) => {
+                token = newToken;
+              },
+            });
           }
         });
       });
@@ -71,7 +81,7 @@ const COMMANDS: Command[] = [
   },
   {
     aliases: ["login"],
-    handler: async ({ socket, cmd }) => {
+    handler: async ({ socket, cmd, setToken }) => {
       const [username, ...passwordChunks] = cmd.split(" ").slice(1);
       const password = passwordChunks.join(" ");
       const response = AUTH_RESPONSE_SCHEMA.parse(
@@ -91,7 +101,8 @@ const COMMANDS: Command[] = [
         }
         return;
       }
-      socket.send(response.token);
+      setToken(response.token);
+      socket.send(`You logged in as ${username}!`);
     },
   },
 ];
@@ -105,4 +116,6 @@ type HandlerOptions = {
   socket: WebSocket;
   meower: WebSocket;
   cmd: string;
+  token?: string;
+  setToken: (token: string) => void;
 };
