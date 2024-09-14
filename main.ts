@@ -1,4 +1,4 @@
-import { POST_WS_SCHEMA } from "./schemas.ts";
+import { POST_WS_SCHEMA, AUTH_RESPONSE_SCHEMA } from "./schemas.ts";
 
 Deno.serve({}, (req) => {
   if (req.headers.get("upgrade") != "websocket") {
@@ -70,6 +70,31 @@ const COMMANDS: {
           })`
       ).join("\n");
       ws.send("Commands available:\n" + stringifiedCommands);
+    },
+  },
+  {
+    aliases: ["login"],
+    handler: async (ws, cmd) => {
+      const [username, ...passwordChunks] = cmd.split(" ").slice(1);
+      const password = passwordChunks.join(" ");
+      const response = AUTH_RESPONSE_SCHEMA.parse(
+        await (
+          await fetch("https://api.meower.org/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+          })
+        ).json()
+      );
+      if (response.error) {
+        if (response.type === "Unauthorized") {
+          ws.send(`Account "${username}" not found or password incorrect.`);
+        } else {
+          ws.send(`An unknown error occured: ${response.type}`);
+        }
+        return;
+      }
+      ws.send(response.token);
     },
   },
 ];
