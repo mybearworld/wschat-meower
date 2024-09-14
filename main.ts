@@ -9,9 +9,13 @@ Deno.serve({}, (req) => {
   }
 
   const { socket, response } = Deno.upgradeWebSocket(req);
+  socket.addEventListener("open", () => {
+    socket.send("Welcome to Meower server");
+    socket.send("Run /help to see a list of commands");
+  });
 
-  const meowerSocket = new WebSocket("https://server.meower.org?v=1");
-  meowerSocket.addEventListener("message", (ev) => {
+  const meower = new WebSocket("https://server.meower.org?v=1");
+  meower.addEventListener("message", (ev) => {
     const data = ev.data;
     if (typeof data !== "string") {
       return;
@@ -25,12 +29,43 @@ Deno.serve({}, (req) => {
   });
 
   socket.addEventListener("message", (ev) => {
-    const data = ev.data;
-    if (typeof data !== "string") {
+    const message = ev.data;
+    if (typeof message !== "string") {
       return;
     }
-    socket.send(data);
+    if (message.startsWith("/")) {
+      let found = false;
+      COMMANDS.forEach((command) => {
+        command.aliases.forEach((alias) => {
+          if (message.startsWith(`/${alias} `) || message === `/${alias}`) {
+            found = true;
+            command.handler(socket, message, meower);
+          }
+        });
+      });
+      if (!found) {
+        socket.send(`Error: Command "${message.slice(1)}" not found!`);
+      }
+    }
   });
 
   return response;
 });
+
+const COMMANDS: {
+  aliases: string[];
+  handler: (socket: WebSocket, cmd: string, meower: WebSocket) => void;
+}[] = [
+  {
+    aliases: ["help", "?"],
+    handler: (ws) => {
+      const stringifiedCommands = COMMANDS.map(
+        (command) =>
+          `/${command.aliases[0]} (Aliases: ${
+            command.aliases.slice(1).join(", ") || "<None>"
+          })`
+      );
+      ws.send("Commands available:\n" + stringifiedCommands);
+    },
+  },
+];
