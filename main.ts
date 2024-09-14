@@ -46,7 +46,11 @@ Deno.serve({}, (req) => {
       if (!found) {
         socket.send(`Error: Command "${message.slice(1)}" not found!`);
       }
+      return;
     }
+    socket.send(
+      "This server requires you to log in, use /login <username> <password> to log in."
+    );
   });
 
   return response;
