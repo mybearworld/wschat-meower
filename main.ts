@@ -4,6 +4,7 @@ import {
   AUTH_RESPONSE_SCHEMA,
   CHATS_RESPONSE_SCHEMA,
   CHAT_SCHEMA,
+  USER_RESPONSE_SCHEMA,
 } from "./schemas.ts";
 
 Deno.serve({}, (req) => {
@@ -136,6 +137,28 @@ const COMMANDS: Command[] = [
       socket.send(
         "wschat-meower\nGithub: https://github.com/mybearworld/wschat-meower"
       );
+    },
+  },
+  {
+    aliases: ["whois"],
+    handler: async ({ socket, cmd }) => {
+      const username = cmd.replace(/\/(.*?) /, "");
+      const response = USER_RESPONSE_SCHEMA.parse(
+        await (
+          await fetch(
+            `https://api.meower.org/users/${encodeURIComponent(username)}`
+          )
+        ).json()
+      );
+      if (response.error) {
+        if (response.type === "notFound") {
+          socket.send("User not found");
+          return;
+        }
+        socket.send(`An unknown error occured: ${response.type}`);
+        return;
+      }
+      socket.send(`${response._id}\nClient: <Unknown>\nID: ${response.uuid}`);
     },
   },
   {

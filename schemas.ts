@@ -41,3 +41,16 @@ export const CHATS_RESPONSE_SCHEMA = z
       error: z.literal(true),
     })
   );
+
+export const USER_RESPONSE_SCHEMA = z
+  .object({
+    _id: z.string(),
+    uuid: z.string(),
+    error: z.literal(false),
+  })
+  .or(
+    z.object({
+      type: z.string(),
+      error: z.literal(true),
+    })
+  );
