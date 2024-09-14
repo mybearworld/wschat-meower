@@ -3,6 +3,7 @@ import { z } from "zod";
 export const POST_SCHEMA = z.object({
   u: z.string(),
   p: z.string(),
+  post_origin: z.string(),
 });
 
 export const POST_WS_SCHEMA = z.object({
@@ -13,6 +14,25 @@ export const POST_WS_SCHEMA = z.object({
 export const AUTH_RESPONSE_SCHEMA = z
   .object({
     token: z.string(),
+    error: z.literal(false),
+  })
+  .or(
+    z.object({
+      type: z.string(),
+      error: z.literal(true),
+    })
+  );
+
+export const CHAT_SCHEMA = z.object({
+  _id: z.string(),
+  nickname: z.string().nullable(),
+  members: z.string().array(),
+  last_active: z.number(),
+});
+
+export const CHATS_RESPONSE_SCHEMA = z
+  .object({
+    autoget: CHAT_SCHEMA.array(),
     error: z.literal(false),
   })
   .or(
