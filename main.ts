@@ -30,6 +30,17 @@ Deno.serve({}, (req) => {
     socket.send(`${packet.data.val.u}: ${packet.data.val.p}`);
   });
 
+  const getHandlerOptions = (cmd: string) =>
+    ({
+      socket,
+      cmd,
+      meower,
+      token,
+      setToken: (newToken) => {
+        token = newToken;
+      },
+    }) satisfies HandlerOptions;
+
   socket.addEventListener("message", (ev) => {
     const message = ev.data;
     if (typeof message !== "string") {
@@ -41,15 +52,7 @@ Deno.serve({}, (req) => {
         command.aliases.forEach((alias) => {
           if (message.startsWith(`/${alias} `) || message === `/${alias}`) {
             found = true;
-            command.handler({
-              socket,
-              cmd: message,
-              meower,
-              token,
-              setToken: (newToken) => {
-                token = newToken;
-              },
-            });
+            command.handler(getHandlerOptions(message));
           }
         });
       });
@@ -58,9 +61,7 @@ Deno.serve({}, (req) => {
       }
       return;
     }
-    socket.send(
-      "This server requires you to log in, use /login <username> <password> to log in."
-    );
+    post(getHandlerOptions(message));
   });
 
   return response;
@@ -106,6 +107,23 @@ const COMMANDS: Command[] = [
     },
   },
 ];
+
+const post = async ({ socket, cmd, token }: HandlerOptions) => {
+  if (!token) {
+    socket.send(
+      "This server requires you to log in, use /login <username> <password> to log in."
+    );
+    return;
+  }
+  const response = await fetch("https://api.meower.org/home", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Token: token },
+    body: JSON.stringify({ content: cmd }),
+  });
+  if (!response.ok) {
+    socket.send(`The meower gods do not like you ${await response.text()}`);
+  }
+};
 
 type Command = {
   aliases: string[];
