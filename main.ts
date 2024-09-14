@@ -131,6 +131,14 @@ const COMMANDS: Command[] = [
     },
   },
   {
+    aliases: ["about"],
+    handler: ({ socket }) => {
+      socket.send(
+        "wschat-meower\nGithub: https://github.com/mybearworld/wschat-meower"
+      );
+    },
+  },
+  {
     aliases: ["help", "?"],
     handler: ({ socket }) => {
       const stringifiedCommands = COMMANDS.map(
