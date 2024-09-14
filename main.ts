@@ -123,6 +123,14 @@ const COMMANDS: Command[] = [
     },
   },
   {
+    aliases: ["nick", "nickname", "name"],
+    handler: ({ socket }) => {
+      socket.send(
+        "Sorry, Meower does not have support for nicknames. Use accounts instead."
+      );
+    },
+  },
+  {
     aliases: ["help", "?"],
     handler: ({ socket }) => {
       const stringifiedCommands = COMMANDS.map(
