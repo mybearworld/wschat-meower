@@ -21,9 +21,20 @@ Deno.serve({}, (req) => {
   }
 
   const { socket, response } = Deno.upgradeWebSocket(req);
+
+  const send = (msg: string) => {
+    if (socket.readyState !== WebSocket.OPEN) {
+      socket.addEventListener("open", () => {
+        socket.send(msg);
+      });
+    } else {
+      socket.send(msg);
+    }
+  };
+
   socket.addEventListener("open", () => {
-    socket.send(MOTD);
-    socket.send(`:json.channels>["home","livechat"]`);
+    send(MOTD);
+    send(`:json.channels>["home","livechat"]`);
   });
 
   let username: string | undefined = undefined;
@@ -46,7 +57,7 @@ Deno.serve({}, (req) => {
       if (packet.data.val.post_origin !== channel) {
         return;
       }
-      socket.send(`${packet.data.val.u}: ${packet.data.val.p}`);
+      send(`${packet.data.val.u}: ${packet.data.val.p}`);
     });
   };
   setUpMeower();
@@ -62,15 +73,13 @@ Deno.serve({}, (req) => {
       aliases: ["join"],
       handler: (cmd) => {
         channel = channels[cmd.match(/^\/join #(.*)$/)?.[1] ?? "home"];
-        socket.send(
-          "This message needs to be sent so wschat can clear the chat"
-        );
+        send("This message needs to be sent so wschat can clear the chat");
       },
     },
     {
       aliases: ["channels"],
       handler: () => {
-        socket.send(
+        send(
           "Channels:\n" +
             Object.keys(channels)
               .map((channel) => " * #" + channel)
@@ -81,7 +90,7 @@ Deno.serve({}, (req) => {
     {
       aliases: ["nick", "nickname", "name"],
       handler: () => {
-        socket.send(
+        send(
           "Sorry, Meower does not have support for nicknames. Use accounts instead."
         );
       },
@@ -89,7 +98,7 @@ Deno.serve({}, (req) => {
     {
       aliases: ["about"],
       handler: () => {
-        socket.send(
+        send(
           "wschat-meower\nGithub: https://github.com/mybearworld/wschat-meower"
         );
       },
@@ -107,13 +116,13 @@ Deno.serve({}, (req) => {
         );
         if (response.error) {
           if (response.type === "notFound") {
-            socket.send("User not found");
+            send("User not found");
             return;
           }
-          socket.send(`An unknown error occured: ${response.type}`);
+          send(`An unknown error occured: ${response.type}`);
           return;
         }
-        socket.send(`${response._id}\nClient: <Unknown>\nID: ${response.uuid}`);
+        send(`${response._id}\nClient: <Unknown>\nID: ${response.uuid}`);
       },
     },
     {
@@ -133,10 +142,10 @@ Deno.serve({}, (req) => {
                 ).json()
               );
         if (chat?.error) {
-          socket.send(`Unknown error: ${chat.type}`);
+          send(`Unknown error: ${chat.type}`);
           return;
         }
-        socket.send(
+        send(
           `Users in ${chat ? chat.nickname : channel}:\n` +
             response.autoget
               .filter((user) => (chat ? chat.members.includes(user._id) : true))
@@ -154,7 +163,7 @@ Deno.serve({}, (req) => {
               command.aliases.slice(1).join(", ") || "<None>"
             })`
         ).join("\n");
-        socket.send("Commands available:\n" + stringifiedCommands);
+        send("Commands available:\n" + stringifiedCommands);
       },
     },
     {
@@ -176,18 +185,16 @@ Deno.serve({}, (req) => {
         );
         if (response.error) {
           if (response.type === "Unauthorized") {
-            socket.send(
-              `Account "${newUsername}" not found or password incorrect.`
-            );
+            send(`Account "${newUsername}" not found or password incorrect.`);
           } else {
-            socket.send(`An unknown error occured: ${response.type}`);
+            send(`An unknown error occured: ${response.type}`);
           }
           return;
         }
         username = newUsername;
         token = response.token;
         setMeowerURL(`https://server.meower.org?v=1&token=${response.token}`);
-        socket.send(`You logged in as ${newUsername}!`);
+        send(`You logged in as ${newUsername}!`);
         const chatsResponse = CHATS_RESPONSE_SCHEMA.parse(
           await (
             await fetch("https://api.meower.org/chats", {
@@ -221,15 +228,13 @@ Deno.serve({}, (req) => {
             return { ...currentChannels, [chosenNickname]: chat._id };
           }, {});
         channels = { ...channels, ...newChannels };
-        socket.send(
-          `:json.channels>${JSON.stringify(Object.keys(newChannels))}`
-        );
+        send(`:json.channels>${JSON.stringify(Object.keys(newChannels))}`);
       },
     },
     {
       aliases: ["motd"],
       handler: () => {
-        socket.send(`MOTD: ${MOTD}`);
+        send(`MOTD: ${MOTD}`);
       },
     },
   ];
@@ -250,7 +255,7 @@ Deno.serve({}, (req) => {
         });
       });
       if (!found) {
-        socket.send(`Error: Command "${message.slice(1)}" not found!`);
+        send(`Error: Command "${message.slice(1)}" not found!`);
       }
       return;
     }
@@ -258,7 +263,7 @@ Deno.serve({}, (req) => {
       return;
     }
     if (!token) {
-      socket.send(
+      send(
         "This server requires you to log in, use /login <username> <password> to log in."
       );
       return;
@@ -272,7 +277,7 @@ Deno.serve({}, (req) => {
       }
     );
     if (!response.ok) {
-      socket.send(`The meower gods do not like you ${await response.text()}`);
+      send(`The meower gods do not like you ${await response.text()}`);
     }
   });
 
