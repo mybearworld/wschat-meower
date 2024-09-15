@@ -41,10 +41,11 @@ Deno.serve({}, (req) => {
   let token: string | undefined = undefined;
   let channel = "home";
   let channels: Record<string, string> = { home: "home", livechat: "livechat" };
+  let knownChannels: z.infer<typeof CHAT_SCHEMA>[] = [];
 
   let meower = new WebSocket("https://server.meower.org?v=1");
   const setUpMeower = () => {
-    meower.addEventListener("message", (ev) => {
+    meower.addEventListener("message", async (ev) => {
       const data = ev.data;
       if (typeof data !== "string") {
         return;
@@ -55,6 +56,36 @@ Deno.serve({}, (req) => {
         return;
       }
       if (packet.data.val.post_origin !== channel) {
+        if (!token) {
+          return;
+        }
+        let postDM = knownChannels.find(
+          (knownChannel) => knownChannel._id === packet.data.val.post_origin
+        );
+        if (postDM?.nickname) {
+          return;
+        }
+        if (!postDM) {
+          const response = CHAT_RESPONSE_SCHEMA.parse(
+            await (
+              await fetch(
+                `https://api.meower.org/chats/${packet.data.val.post_origin}`,
+                { headers: { Token: token } }
+              )
+            ).json()
+          );
+          if (response.error) {
+            return;
+          }
+          knownChannels.push(response);
+          postDM = response;
+        }
+        const dmUser = postDM.members.find((member) => member !== username);
+        send(
+          packet.data.val.u === dmUser
+            ? `${dmUser} -> You : ${packet.data.val.p}`
+            : `You -> ${dmUser} : ${packet.data.val.p}`
+        );
         return;
       }
       send(`${packet.data.val.u}: ${packet.data.val.p}`);
@@ -205,20 +236,20 @@ Deno.serve({}, (req) => {
         if (chatsResponse.error) {
           return;
         }
-        const getChatNickname = (chat: z.infer<typeof CHAT_SCHEMA>) =>
-          chat.nickname
-            ?.toLowerCase()
-            ?.replace(/[^a-z0-9]/g, "-")
-            ?.replace(/-+/g, "-")
-            ?.slice(0, 7)
-            ?.replace(/^-|-$/g, "") ??
-          "@" +
-            (chat.members.find((user) => user !== username)?.slice(0, 6) ??
-              "unknown");
+        const getChatNickname = (nickname: string) =>
+          nickname
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, "-")
+            .replace(/-+/g, "-")
+            .slice(0, 7)
+            .replace(/^-|-$/g, "");
         const newChannels = chatsResponse.autoget
           .toSorted((a, b) => b.last_active - a.last_active)
           .reduce((currentChannels, chat) => {
-            const nickname = getChatNickname(chat);
+            if (!chat.nickname) {
+              return currentChannels;
+            }
+            const nickname = getChatNickname(chat.nickname);
             let chosenNickname = nickname;
             let i = 2;
             while (chosenNickname in currentChannels) {
@@ -228,7 +259,59 @@ Deno.serve({}, (req) => {
             return { ...currentChannels, [chosenNickname]: chat._id };
           }, {});
         channels = { ...channels, ...newChannels };
+        knownChannels = chatsResponse.autoget;
         send(`:json.channels>${JSON.stringify(Object.keys(newChannels))}`);
+      },
+    },
+    {
+      aliases: ["pm"],
+      handler: async (cmd) => {
+        if (!token || !username) {
+          send(
+            "This server requires you to log in, use /login <username> <password> to log in."
+          );
+          return;
+        }
+        const [recipient, ...messageChunks] = cmd.split(" ").slice(1);
+        const message = messageChunks.join(" ");
+        if (recipient === username) {
+          send(`${username} -> You : ${message}`);
+          send(`You -> ${username} : ${message}`);
+          return;
+        }
+        let dm = knownChannels.find(
+          (chat) => !chat.nickname && chat.members.includes(recipient)
+        );
+        if (!dm) {
+          const response = CHAT_RESPONSE_SCHEMA.parse(
+            await (
+              await fetch(
+                `https://api.meower.org/users/${encodeURIComponent(recipient)}/dm`,
+                {
+                  headers: { Token: token },
+                }
+              )
+            ).json()
+          );
+          if (response.error) {
+            send(
+              response.type === "notFound"
+                ? "User not found"
+                : `Unknown error: ${response.type}`
+            );
+            return;
+          }
+          knownChannels.push(response);
+          dm = response;
+        }
+        const response = await fetch(`https://api.meower.org/posts/${dm._id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Token: token },
+          body: JSON.stringify({ content: message }),
+        });
+        if (!response.ok) {
+          send(`Unknown error: ${await response.text()}`);
+        }
       },
     },
     {
