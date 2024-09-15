@@ -51,35 +51,190 @@ Deno.serve({}, (req) => {
   };
   setUpMeower();
 
-  const getHandlerOptions = (cmd: string) =>
-    ({
-      socket,
-      cmd,
-      meower,
-      setMeowerURL: (url) => {
-        meower.close();
-        meower = new WebSocket(url);
-        setUpMeower();
-      },
-      username,
-      setUsername: (newUsername) => {
-        username = newUsername;
-      },
-      token,
-      setToken: (newToken) => {
-        token = newToken;
-      },
-      channel,
-      setChannel: (newChannel) => {
-        channel = newChannel;
-      },
-      channels,
-      setChannels: (newChannels) => {
-        channels = newChannels;
-      },
-    }) satisfies HandlerOptions;
+  const setMeowerURL = (url: string) => {
+    meower.close();
+    meower = new WebSocket(url);
+    setUpMeower();
+  };
 
-  socket.addEventListener("message", (ev) => {
+  const COMMANDS: Command[] = [
+    {
+      aliases: ["join"],
+      handler: (cmd) => {
+        channel = channels[cmd.match(/^\/join #(.*)$/)?.[1] ?? "home"];
+        socket.send(
+          "This message needs to be sent so wschat can clear the chat"
+        );
+      },
+    },
+    {
+      aliases: ["channels"],
+      handler: () => {
+        socket.send(
+          "Channels:\n" +
+            Object.keys(channels)
+              .map((channel) => " * #" + channel)
+              .join("\n")
+        );
+      },
+    },
+    {
+      aliases: ["nick", "nickname", "name"],
+      handler: () => {
+        socket.send(
+          "Sorry, Meower does not have support for nicknames. Use accounts instead."
+        );
+      },
+    },
+    {
+      aliases: ["about"],
+      handler: () => {
+        socket.send(
+          "wschat-meower\nGithub: https://github.com/mybearworld/wschat-meower"
+        );
+      },
+    },
+    {
+      aliases: ["whois"],
+      handler: async (cmd) => {
+        const username = cmd.replace(/\/(.*?) /, "");
+        const response = USER_RESPONSE_SCHEMA.parse(
+          await (
+            await fetch(
+              `https://api.meower.org/users/${encodeURIComponent(username)}`
+            )
+          ).json()
+        );
+        if (response.error) {
+          if (response.type === "notFound") {
+            socket.send("User not found");
+            return;
+          }
+          socket.send(`An unknown error occured: ${response.type}`);
+          return;
+        }
+        socket.send(`${response._id}\nClient: <Unknown>\nID: ${response.uuid}`);
+      },
+    },
+    {
+      aliases: ["users"],
+      handler: async () => {
+        const response = ULIST_SCHEMA.parse(
+          await (await fetch("https://api.meower.org/ulist")).json()
+        );
+        const chat =
+          channel === "home" || channel === "livechat" || !token
+            ? null
+            : CHAT_RESPONSE_SCHEMA.parse(
+                await (
+                  await fetch(`https://api.meower.org/chats/${channel}`, {
+                    headers: { Token: token },
+                  })
+                ).json()
+              );
+        if (chat?.error) {
+          socket.send(`Unknown error: ${chat.type}`);
+          return;
+        }
+        socket.send(
+          `Users in ${chat ? chat.nickname : channel}:\n` +
+            response.autoget
+              .filter((user) => (chat ? chat.members.includes(user._id) : true))
+              .map((user) => ` * ${user._id}`)
+              .join("\n")
+        );
+      },
+    },
+    {
+      aliases: ["help", "?"],
+      handler: () => {
+        const stringifiedCommands = COMMANDS.map(
+          (command) =>
+            `* /${command.aliases[0]} (Aliases: ${
+              command.aliases.slice(1).join(", ") || "<None>"
+            })`
+        ).join("\n");
+        socket.send("Commands available:\n" + stringifiedCommands);
+      },
+    },
+    {
+      aliases: ["login"],
+      handler: async (cmd) => {
+        const [newUsername, ...passwordChunks] = cmd.split(" ").slice(1);
+        const newPassword = passwordChunks.join(" ");
+        const response = AUTH_RESPONSE_SCHEMA.parse(
+          await (
+            await fetch("https://api.meower.org/auth/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                username: newUsername,
+                password: newPassword,
+              }),
+            })
+          ).json()
+        );
+        if (response.error) {
+          if (response.type === "Unauthorized") {
+            socket.send(
+              `Account "${newUsername}" not found or password incorrect.`
+            );
+          } else {
+            socket.send(`An unknown error occured: ${response.type}`);
+          }
+          return;
+        }
+        username = newUsername;
+        token = response.token;
+        setMeowerURL(`https://server.meower.org?v=1&token=${response.token}`);
+        socket.send(`You logged in as ${newUsername}!`);
+        const chatsResponse = CHATS_RESPONSE_SCHEMA.parse(
+          await (
+            await fetch("https://api.meower.org/chats", {
+              headers: { Token: response.token },
+            })
+          ).json()
+        );
+        if (chatsResponse.error) {
+          return;
+        }
+        const getChatNickname = (chat: z.infer<typeof CHAT_SCHEMA>) =>
+          chat.nickname
+            ?.toLowerCase()
+            ?.replace(/[^a-z0-9]/g, "-")
+            ?.replace(/-+/g, "-")
+            ?.slice(0, 7)
+            ?.replace(/^-|-$/g, "") ??
+          "@" +
+            (chat.members.find((user) => user !== username)?.slice(0, 6) ??
+              "unknown");
+        const newChannels = chatsResponse.autoget
+          .toSorted((a, b) => b.last_active - a.last_active)
+          .reduce((currentChannels, chat) => {
+            const nickname = getChatNickname(chat);
+            let chosenNickname = nickname;
+            let i = 2;
+            while (chosenNickname in currentChannels) {
+              chosenNickname = `${nickname}-${i}`;
+              i++;
+            }
+            return { ...currentChannels, [chosenNickname]: chat._id };
+          }, {});
+        channels = { ...channels, ...newChannels };
+        socket.send(
+          `:json.channels>${JSON.stringify(Object.keys(newChannels))}`
+        );
+      },
+    },
+    {
+      aliases: ["motd"],
+      handler: () => {
+        socket.send(`MOTD: ${MOTD}`);
+      },
+    },
+  ];
+
+  socket.addEventListener("message", async (ev) => {
     const message = ev.data;
     if (typeof message !== "string") {
       return;
@@ -90,7 +245,7 @@ Deno.serve({}, (req) => {
         command.aliases.forEach((alias) => {
           if (message.startsWith(`/${alias} `) || message === `/${alias}`) {
             found = true;
-            command.handler(getHandlerOptions(message));
+            command.handler(message);
           }
         });
       });
@@ -102,224 +257,29 @@ Deno.serve({}, (req) => {
     if (message.startsWith(":jsonGet ")) {
       return;
     }
-    post(getHandlerOptions(message));
+    if (!token) {
+      socket.send(
+        "This server requires you to log in, use /login <username> <password> to log in."
+      );
+      return;
+    }
+    const response = await fetch(
+      `https://api.meower.org/${channel === "home" ? "home" : `posts/${channel}`}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Token: token },
+        body: JSON.stringify({ content: message }),
+      }
+    );
+    if (!response.ok) {
+      socket.send(`The meower gods do not like you ${await response.text()}`);
+    }
   });
 
   return response;
 });
 
-const COMMANDS: Command[] = [
-  {
-    aliases: ["join"],
-    handler: ({ socket, cmd, setChannel, channels }) => {
-      setChannel(channels[cmd.match(/^\/join #(.*)$/)?.[1] ?? "home"]);
-      socket.send("This message needs to be sent so wschat can clear the chat");
-    },
-  },
-  {
-    aliases: ["channels"],
-    handler: ({ socket, channels }) => {
-      socket.send(
-        "Channels:\n" +
-          Object.keys(channels)
-            .map((channel) => " * #" + channel)
-            .join("\n")
-      );
-    },
-  },
-  {
-    aliases: ["nick", "nickname", "name"],
-    handler: ({ socket }) => {
-      socket.send(
-        "Sorry, Meower does not have support for nicknames. Use accounts instead."
-      );
-    },
-  },
-  {
-    aliases: ["about"],
-    handler: ({ socket }) => {
-      socket.send(
-        "wschat-meower\nGithub: https://github.com/mybearworld/wschat-meower"
-      );
-    },
-  },
-  {
-    aliases: ["whois"],
-    handler: async ({ socket, cmd }) => {
-      const username = cmd.replace(/\/(.*?) /, "");
-      const response = USER_RESPONSE_SCHEMA.parse(
-        await (
-          await fetch(
-            `https://api.meower.org/users/${encodeURIComponent(username)}`
-          )
-        ).json()
-      );
-      if (response.error) {
-        if (response.type === "notFound") {
-          socket.send("User not found");
-          return;
-        }
-        socket.send(`An unknown error occured: ${response.type}`);
-        return;
-      }
-      socket.send(`${response._id}\nClient: <Unknown>\nID: ${response.uuid}`);
-    },
-  },
-  {
-    aliases: ["users"],
-    handler: async ({ socket, channel, token }) => {
-      const response = ULIST_SCHEMA.parse(
-        await (await fetch("https://api.meower.org/ulist")).json()
-      );
-      const chat =
-        channel === "home" || channel === "livechat" || !token
-          ? null
-          : CHAT_RESPONSE_SCHEMA.parse(
-              await (
-                await fetch(`https://api.meower.org/chats/${channel}`, {
-                  headers: { Token: token },
-                })
-              ).json()
-            );
-      if (chat?.error) {
-        socket.send(`Unknown error: ${chat.type}`);
-        return;
-      }
-      socket.send(
-        `Users in ${chat ? chat.nickname : channel}:\n` +
-          response.autoget
-            .filter((user) => (chat ? chat.members.includes(user._id) : true))
-            .map((user) => ` * ${user._id}`)
-            .join("\n")
-      );
-    },
-  },
-  {
-    aliases: ["help", "?"],
-    handler: ({ socket }) => {
-      const stringifiedCommands = COMMANDS.map(
-        (command) =>
-          `* /${command.aliases[0]} (Aliases: ${
-            command.aliases.slice(1).join(", ") || "<None>"
-          })`
-      ).join("\n");
-      socket.send("Commands available:\n" + stringifiedCommands);
-    },
-  },
-  {
-    aliases: ["login"],
-    handler: async ({
-      socket,
-      setMeowerURL,
-      cmd,
-      setUsername,
-      setToken,
-      channels,
-      setChannels,
-    }) => {
-      const [username, ...passwordChunks] = cmd.split(" ").slice(1);
-      const password = passwordChunks.join(" ");
-      const response = AUTH_RESPONSE_SCHEMA.parse(
-        await (
-          await fetch("https://api.meower.org/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username, password }),
-          })
-        ).json()
-      );
-      if (response.error) {
-        if (response.type === "Unauthorized") {
-          socket.send(`Account "${username}" not found or password incorrect.`);
-        } else {
-          socket.send(`An unknown error occured: ${response.type}`);
-        }
-        return;
-      }
-      setUsername(username);
-      setToken(response.token);
-      setMeowerURL(`https://server.meower.org?v=1&token=${response.token}`);
-      socket.send(`You logged in as ${username}!`);
-      const chatsResponse = CHATS_RESPONSE_SCHEMA.parse(
-        await (
-          await fetch("https://api.meower.org/chats", {
-            headers: { Token: response.token },
-          })
-        ).json()
-      );
-      if (chatsResponse.error) {
-        return;
-      }
-      const getChatNickname = (chat: z.infer<typeof CHAT_SCHEMA>) =>
-        chat.nickname
-          ?.toLowerCase()
-          ?.replace(/[^a-z0-9]/g, "-")
-          ?.replace(/-+/g, "-")
-          ?.slice(0, 7)
-          ?.replace(/^-|-$/g, "") ??
-        "@" +
-          (chat.members.find((user) => user !== username)?.slice(0, 6) ??
-            "unknown");
-      const newChannels = chatsResponse.autoget
-        .toSorted((a, b) => b.last_active - a.last_active)
-        .reduce((currentChannels, chat) => {
-          const nickname = getChatNickname(chat);
-          let chosenNickname = nickname;
-          let i = 2;
-          while (chosenNickname in currentChannels) {
-            chosenNickname = `${nickname}-${i}`;
-            i++;
-          }
-          return { ...currentChannels, [chosenNickname]: chat._id };
-        }, {});
-      setChannels({ ...channels, ...newChannels });
-      socket.send(`:json.channels>${JSON.stringify(Object.keys(newChannels))}`);
-    },
-  },
-  {
-    aliases: ["motd"],
-    handler: ({ socket }) => {
-      socket.send(`MOTD: ${MOTD}`);
-    },
-  },
-];
-
-const post = async ({ socket, cmd, token, channel }: HandlerOptions) => {
-  if (!token) {
-    socket.send(
-      "This server requires you to log in, use /login <username> <password> to log in."
-    );
-    return;
-  }
-  const response = await fetch(
-    `https://api.meower.org/${channel === "home" ? "home" : `posts/${channel}`}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Token: token },
-      body: JSON.stringify({ content: cmd }),
-    }
-  );
-  if (!response.ok) {
-    socket.send(`The meower gods do not like you ${await response.text()}`);
-  }
-};
-
 type Command = {
   aliases: string[];
-  handler: (handlerOptions: HandlerOptions) => void;
-};
-
-type HandlerOptions = {
-  socket: WebSocket;
-  meower: WebSocket;
-  setMeowerURL: (url: string) => void;
-  cmd: string;
-  username?: string;
-  setUsername: (username: string) => void;
-  token?: string;
-  setToken: (token: string) => void;
-  channel: string;
-  setChannel: (channel: string) => void;
-  channels: Record<string, string>;
-  setChannels: (channels: Record<string, string>) => void;
+  handler: (cmd: string) => void;
 };
