@@ -15,6 +15,8 @@ To start using this client:
   ```
 - Start the server.
   ```
-  deno task start
+  $ deno task start
+  Listening on http://0.0.0.0:1234/
   ```
-- Open [wsChat](https://wlodekm.nekoweb.org/wsChat/client) and click on the bookmarklet.
+- Open [wsChat](https://wlodekm.nekoweb.org/wsChat/client).
+- Click on the "Change server" button and enter the URL you got above.
