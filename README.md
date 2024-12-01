@@ -1,3 +1,6 @@
+> [!WARNING]
+> Meower no longer exists. As a result, this client will no longer be maintained.
+
 # wschat-meower
 
 A Meower client within wsChat!
